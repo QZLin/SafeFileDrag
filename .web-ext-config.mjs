@@ -18,4 +18,9 @@
 export default {
   sourceDir: 'dist',
   artifactsDir: 'web-ext-artifacts',
+  build: {
+    // Otherwise a second `web-ext build` refuses to overwrite the previous package, which
+    // is exactly what you want to do after a fix.
+    overwriteDest: true,
+  },
 };

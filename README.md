@@ -183,25 +183,35 @@ environment (`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`), from a `.env` file next 
 ### First listed submission needs add-on metadata on AMO
 
 Unlisted signing needs nothing beyond the credentials. A **listed** version is different:
-AMO rejects the upload until the *add-on* has licence metadata, with
+AMO rejects it until the *version* carries licence metadata, with
 
 ```
-This field, or custom_license, is required for listed versions.
+400  {"version": {"license": ["This field, or custom_license, is required for listed versions."]}}
 ```
 
 That field lives on AMO, not in the package. A WebExtension manifest cannot declare a
-licence, and `web-ext sign` sends only what the manifest contains, so it cannot supply it.
-Per the AMO API, a listed version requires a version `license` (or `custom_license`), an
-add-on **name**, a **summary**, and **categories** for every app the version supports. The
-first listed submission therefore has to be made once in the web UI (or by hand through the
-API):
+licence, and `web-ext sign` sends only what the manifest contains, so the command cannot
+supply it. Per the AMO API, a listed version requires a version `license` (or
+`custom_license`), an add-on **name**, a **summary**, and **categories** for every app the
+version supports — all of which the web submission flow asks for, none of which the API
+submission from `web-ext` can carry. So the first listed version has to go through the web
+UI once.
 
-1. Check <https://addons.mozilla.org/developers/addons/> first: a rejected submission may
-   already have created the add-on record, in which case open it and set the licence there
-   instead of starting over.
-2. Otherwise <https://addons.mozilla.org/developers/addon/submit/> → *On this site*
-   (listed) → upload `web-ext-artifacts/safe_file_drag-1.0.0.zip` (from `pnpm web-ext
-   build`) → fill in name, summary and categories → choose the licence.
+Note the order: the upload page (`…/developers/addon/submit/upload-listed`) only has a file
+picker. Name, summary, categories and licence are asked in the steps *after* pressing
+continue, which is why nothing can be "pre-set" before the upload.
+
+1. Build the package to upload: `pnpm web-ext build` →
+   `web-ext-artifacts/safe_file_drag-1.0.0.zip` (three files: `manifest.json`,
+   `content.js`, `LICENSE`).
+2. Check <https://addons.mozilla.org/developers/addons/> first. The failed API attempts may
+   already have created the add-on record for `safe-file-drag@qzlin.github.io`; if it is
+   there, upload the new version from *its* page instead of starting a fresh submission —
+   AMO rejects a second add-on with the same id.
+3. Otherwise <https://addons.mozilla.org/developers/addon/submit/> → *On this site*
+   (listed) → choose the `.zip` → continue → fill in name, summary and categories → choose
+   the licence (below) → review notes → submit. The first listed version goes into the
+   review queue (`nominated`); publishing happens after a reviewer approves it.
 
 Once a listed version with a licence exists, later versions inherit it, so
 `pnpm run sign -- --channel=listed` works from then on.
@@ -210,15 +220,41 @@ Once a listed version with a licence exists, later versions inherit it, so
 `GPL-3.0-or-later` — only `GPL-3.0-only`, `GPL-2.0-only`, `LGPL-2.1-only`,
 `LGPL-3.0-only`, `AGPL-3.0-only`, `MPL-2.0`, `Apache-2.0`, `MIT`, `ISC`, `BSD-2-Clause`,
 `Unlicense` and `all-rights-reserved`. To keep the "or any later version" grant this
-project declares, pick **Custom License** and use:
+project declares, pick **Custom License** (*自定义许可证* in the Chinese UI) and paste:
 
 * name: `GNU General Public License v3.0 or later`
-* text: the notice in the [License](#license) section below, or a link to
-  <https://github.com/QZLin/SafeFileDrag/blob/main/LICENSE>
+* text:
+
+  ```
+  Copyright (C) 2026 QZLin
+
+  This program is free software: you can redistribute it and/or modify it under the terms
+  of the GNU General Public License as published by the Free Software Foundation, either
+  version 3 of the License, or (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT ANY
+  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+  PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+  The full text is at https://github.com/QZLin/SafeFileDrag/blob/main/LICENSE
+  ```
 
 Choosing `GPL-3.0-only` would be simpler but would contradict `package.json`. The
 alternative, if a custom licence is unwanted, is to move the project itself to
 `GPL-3.0-only`.
+
+**Notes to reviewer** (asked in the same flow; this is the whole review burden of a small
+add-on, so it is worth being explicit):
+
+```
+No permissions, no background script, no network access, no remote code, no eval.
+The content script runs in the page's own world (world: "MAIN") at document_start; it
+observes drag/drop events and only calls preventDefault() on a file drop that no page
+handler consumed, so an accidental drop cannot navigate the tab away. <input type="file">
+targets are detected through the composed path and left alone, so real uploads keep
+working. Source is unminified in the package; repository:
+https://github.com/QZLin/SafeFileDrag (GPL-3.0-or-later).
+```
 
 ### The two warnings that remain
 
