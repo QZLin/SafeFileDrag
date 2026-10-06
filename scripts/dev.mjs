@@ -66,7 +66,26 @@ async function main() {
     let page = 'unreachable';
     try {
       const response = await fetch(pageUrl);
-      page = `${response.status} ${response.headers.get('content-type')} (${(await response.text()).length} bytes)`;
+      const html = await response.text();
+      page = `${response.status} ${response.headers.get('content-type')} (${html.length} bytes)`;
+
+      // The page loads its own script externally, so a typo in that path would otherwise
+      // only show up in the browser: fetch every local asset the page references.
+      const assets = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+        .map((match) => match[1])
+        .filter((asset) => asset && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(asset));
+      for (const asset of assets) {
+        try {
+          const assetResponse = await fetch(new URL(asset, pageUrl));
+          const body = await assetResponse.text();
+          console.log(
+            `  asset       : ${asset} -> ${assetResponse.status} ${assetResponse.headers.get('content-type')} (${body.length} bytes)`,
+          );
+          if (!assetResponse.ok) problems.push(`the page asset ${asset} returned ${assetResponse.status}.`);
+        } catch (error) {
+          problems.push(`the page asset ${asset} could not be fetched: ${error.message}`);
+        }
+      }
     } catch (error) {
       problems.push(`the test page could not be fetched: ${error.message}`);
     }

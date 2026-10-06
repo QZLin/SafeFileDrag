@@ -7,11 +7,18 @@
  *
  * The bundle is intentionally not minified: this extension is small, security
  * sensitive and meant to be read by whoever installs or reviews it.
+ *
+ * The build ends by checking the package against its own manifest: every file the
+ * manifest names must exist in `dist/`. Signing the repository root instead of `dist/`
+ * is the classic way to get `MANIFEST_CONTENT_SCRIPT_FILE_NOT_FOUND` from AMO, and this
+ * check turns any such mismatch into a build failure that names the file.
  */
 import { build } from 'esbuild';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { verifyPackage } from './lib/package-check.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
@@ -41,4 +48,15 @@ await build({
 const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
 await writeFile(join(dist, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
-console.log(`built ${manifest.name} ${manifest.version} -> dist/`);
+const { problems } = await verifyPackage({
+  distDir: dist,
+  manifestPath: join(dist, 'manifest.json'),
+});
+if (problems.length > 0) {
+  console.error('the built package does not match its manifest:');
+  for (const problem of problems) console.error(`  - ${problem}`);
+  console.error('sign and lint the built directory: --source-dir dist');
+  process.exit(1);
+}
+
+console.log(`built ${manifest.name} ${manifest.version} -> dist/ (package checked)`);

@@ -96,12 +96,14 @@ by the time the event finished?"
 | `scripts/build.mjs` | esbuild bundle → `dist/content.js`, then copies the manifest. |
 | `scripts/test.mjs` | Bundles the jsdom suite and runs it on Node's built-in test runner. |
 | `scripts/test-gecko.mjs` | Drives real Firefox (through `web-ext run`) and collects the probe page's report. |
-| `scripts/lib/` | Shared by both launchers: finding Firefox/web-ext, the local static server. |
+| `scripts/sign.mjs` | Signs the built package with AMO, with the pre-flight checks that stop the classic mistake. |
+| `scripts/lib/` | Shared by the launchers: finding Firefox/web-ext, the static server, the package check. |
 | `test/` | The jsdom suite (no test framework). |
 | `test/support/` | Harness: jsdom page, listener bookkeeping, drag payloads, globals bridge for `src/content.ts`. |
-| `test/gecko/index.html` | The probe page: asserts inside real Gecko and posts its results back. |
+| `test/gecko/` | The probe page and its scripts: assert inside real Gecko, then post the results back. |
 | `scripts/dev.mjs` | Manual-test launcher: serves `dev/` and opens Firefox with the add-on loaded. |
 | `dev/index.html` | The manual playground (zones that need a real Firefox and a real file drag). |
+| `dev/playground.js` | The playground's behaviour, external so no page carries an inline script. |
 | `dist/` | The loadable (temporary) add-on. Generated; not minified on purpose. |
 
 ## Build
@@ -122,20 +124,60 @@ pnpm run test:gecko      # the same promises, checked in real Firefox
 pnpm run build           # -> dist/manifest.json, dist/content.js
 ```
 
+The build ends by checking the package against its own manifest: every file the manifest
+names must exist in `dist/`. That is the local version of AMO's
+`MANIFEST_CONTENT_SCRIPT_FILE_NOT_FOUND`, and it fails the build instead of the upload.
+
 The bundle is deliberately **not** minified: it is small, security-sensitive, and
 meant to be read by whoever installs or reviews it.
 
-Manifest validation with Mozilla's own linter:
+## Package and sign
 
 ```sh
-pnpm dlx web-ext lint --source-dir dist
+pnpm run sign                        # unlisted build (self-distribution), the default
+pnpm run sign -- --channel=listed    # submit for an AMO listing
+pnpm run sign -- --check             # pre-flight only: no upload, no network
+pnpm run lint                        # = web-ext lint --source-dir dist
 ```
 
-Result for this revision: **0 errors.** It reports two informational warnings because
-the manifest declares `browser_specific_settings.gecko.data_collection_permissions`
-(required by AMO for new submissions, supported from Firefox 140) while
-`strict_min_version` stays at `128.0` — the first version with `world: "MAIN"`
-content scripts. Firefox 128–139 simply ignore that metadata key.
+**Always sign `dist/`, never the repository root.** `web-ext sign` on its own signs the
+current directory. The root contains the *source* manifest, whose `content.js` only exists
+after the build, so signing there uploads a package AMO rejects:
+
+```
+MANIFEST_CONTENT_SCRIPT_FILE_NOT_FOUND   content_scripts[0].js refers to "content.js",
+                                         which is not in the package
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION   …
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION   …
+INLINE_SCRIPT × 3                        dev/index.html, test/gecko/index.html
+```
+
+Every one of those goes away with `--source-dir dist`: the inline-script warnings were
+about development pages that are not part of the add-on at all, and the missing file was
+the build output. `pnpm run sign` always passes `--source-dir dist`, checks the package
+against the manifest, and refuses to upload without credentials — so that particular
+failure cannot be repeated by hand. The signed `.xpi` lands in `web-ext-artifacts/`
+(git-ignored).
+
+Credentials are never committed; `scripts/sign.mjs` accepts them from the environment
+(`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`), from a `.env` file next to `package.json`, or
+from `--api-key=` / `--api-secret=`. Create them at
+<https://addons.mozilla.org/developers/addon/api/key/>.
+
+### The two warnings that remain
+
+`pnpm run lint` reports **0 errors and 2 warnings**, and both are about the same metadata
+key:
+
+* `browser_specific_settings.gecko.data_collection_permissions` is understood from
+  Firefox 140 (desktop) and Firefox for Android 142, while `strict_min_version` is 128.0 —
+  the first release with `world: "MAIN"` content scripts;
+* older versions simply ignore the key, and AMO requires it for new submissions, so the
+  only effect is the warning;
+* raising `strict_min_version` to `140.0` (or adding
+  `browser_specific_settings.gecko_android.strict_min_version: "142.0"`) silences one
+  warning each, at the price of making the add-on uninstallable on Firefox 128–139 for no
+  functional gain. The warnings are therefore accepted deliberately.
 
 ## Install (temporary, for testing)
 

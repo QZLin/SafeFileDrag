@@ -13,6 +13,7 @@
     "check": "pnpm run typecheck && pnpm run typecheck:test && pnpm run build && pnpm run test",
     "check:full": "pnpm run check && pnpm run test:gecko",
     "lint": "web-ext lint --source-dir dist",
+    "sign": "pnpm run build && node scripts/sign.mjs",
     "start": "pnpm run build && node scripts/dev.mjs",
     "start:check": "pnpm run build && node scripts/dev.mjs --check"
   },
