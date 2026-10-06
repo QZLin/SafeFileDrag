@@ -16,6 +16,8 @@ import { dragEvent, fileDragPayload, type Dom } from './support/dom.js';
 const contentUrl = new URL('../dist/content.js', import.meta.url);
 const builtManifestUrl = new URL('../dist/manifest.json', import.meta.url);
 const sourceManifestUrl = new URL('../manifest.json', import.meta.url);
+const builtLicenseUrl = new URL('../dist/LICENSE', import.meta.url);
+const sourceLicenseUrl = new URL('../LICENSE', import.meta.url);
 
 const skip = existsSync(contentUrl)
   ? false
@@ -68,4 +70,15 @@ test('the built manifest is the source manifest, unchanged', { skip }, () => {
   const source = JSON.parse(readFileSync(sourceManifestUrl, 'utf8'));
 
   assert.deepEqual(built, source);
+});
+
+test('the licence text travels with the package', { skip }, () => {
+  assert.equal(readFileSync(builtLicenseUrl, 'utf8'), readFileSync(sourceLicenseUrl, 'utf8'));
+});
+
+test('the shipped bundle names its source and licence', { skip }, () => {
+  const code = readFileSync(contentUrl, 'utf8');
+
+  assert.match(code, /https:\/\/github\.com\/QZLin\/SafeFileDrag/);
+  assert.match(code, /GPL-3\.0-only/);
 });

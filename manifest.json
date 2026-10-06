@@ -3,6 +3,11 @@
   "name": "Safe File Drag",
   "version": "1.0.0",
   "description": "Firefox-only guard: an accidental file drop no longer replaces the current tab with the dropped file, while real upload dropzones keep working.",
+  "homepage_url": "https://github.com/QZLin/SafeFileDrag",
+  "developer": {
+    "name": "QZLin",
+    "url": "https://github.com/QZLin"
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "safe-file-drag@local.invalid",

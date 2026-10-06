@@ -4,6 +4,24 @@
   "private": true,
   "type": "module",
   "description": "Firefox-only WebExtension: prevent accidental local-file drops from navigating the current tab, without breaking normal file uploads.",
+  "license": "GPL-3.0-only",
+  "author": "QZLin <qzlin01@163.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QZLin/SafeFileDrag.git"
+  },
+  "homepage": "https://github.com/QZLin/SafeFileDrag#readme",
+  "bugs": {
+    "url": "https://github.com/QZLin/SafeFileDrag/issues"
+  },
+  "keywords": [
+    "firefox",
+    "webextension",
+    "browser-extension",
+    "drag-and-drop",
+    "file-drop",
+    "security"
+  ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",

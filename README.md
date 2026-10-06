@@ -4,6 +4,7 @@ A **Firefox-only WebExtension** that stops an accidental local-file drop from
 replacing ("navigating away") the page you are working on — without breaking the
 file uploads that are supposed to work.
 
+* Source: <https://github.com/QZLin/SafeFileDrag> — GPL-3.0-only, see [LICENSE](LICENSE).
 * Manifest V3, Firefox 128+, no build-time UI, no background script.
 * No `permissions`, no `storage`, no `background`/`popup`/`options`, no network
   access, no remote code, no `eval`.
@@ -104,6 +105,7 @@ by the time the event finished?"
 | `scripts/dev.mjs` | Manual-test launcher: serves `dev/` and opens Firefox with the add-on loaded. |
 | `dev/index.html` | The manual playground (zones that need a real Firefox and a real file drag). |
 | `dev/playground.js` | The playground's behaviour, external so no page carries an inline script. |
+| `LICENSE` | GPL-3.0. Copied into `dist/` so the signed package carries it too. |
 | `dist/` | The loadable (temporary) add-on. Generated; not minified on purpose. |
 
 ## Build
@@ -365,7 +367,7 @@ wrapped in per-target adapters for identity checks, and the adapter was being ha
 `Element`.
 
 The jsdom suite found it (`test/shadow-dom.test.ts`, `test/content.test.ts`), and the
-real-Geiger check now confirms both the premise and the fix in Firefox — `event.target`
+real-Gecko check now confirms both the premise and the fix in Firefox — `event.target`
 really is `div#component` while `composedPath()[0]` really is `input#shadow-input`.
 Reverting just those two source files makes `pnpm run test:gecko` report 11/12, failing
 on exactly that check with `dragenter=true dragover=true drop=true`: a legitimate upload
@@ -374,7 +376,7 @@ cancelled in a real browser. Zone 9 of the playground reproduces it by hand.
 ## Next steps (not done yet)
 
 The nine zones documented under "Manual verification" were checked by hand, the jsdom
-suite covers the policy and its propagation corner cases, and the real-Geiger check covers
+suite covers the policy and its propagation corner cases, and the real-Gecko check covers
 the browser-specific dispatch behaviour. What is left:
 
 * **The two claims that need a real drag from the OS.** That Firefox really navigates the
@@ -391,4 +393,11 @@ the browser-specific dispatch behaviour. What is left:
 * Playground zones for an **iframe** drop; iframes are already covered by `all_frames` and
   by the jsdom suite, but not yet by a real drag.
 
+## License
 
+GNU General Public License v3.0 — see [LICENSE](LICENSE). The licence text is also copied
+into `dist/`, so the signed `.xpi` carries it.
+
+`package.json` declares `GPL-3.0-only`, which is exactly what the licence file grants. If
+the intent is the FSF's usual "version 3 or any later version", change it to
+`GPL-3.0-or-later` and add that wording to the licence notice.

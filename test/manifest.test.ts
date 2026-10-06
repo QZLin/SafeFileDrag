@@ -13,12 +13,30 @@ import { readFileSync } from 'node:fs';
 
 const manifestUrl = new URL('../manifest.json', import.meta.url);
 const packageUrl = new URL('../package.json', import.meta.url);
+const licenseUrl = new URL('../LICENSE', import.meta.url);
 const manifestText = readFileSync(manifestUrl, 'utf8');
 const manifest = JSON.parse(manifestText);
 const pkg = JSON.parse(readFileSync(packageUrl, 'utf8'));
 
 test('declares Manifest V3', () => {
   assert.equal(manifest.manifest_version, 3);
+});
+
+test('points at the repository the code actually lives in', () => {
+  // `web-ext sign` shows this on the AMO listing, so a stale URL is user-visible.
+  const fromPackage = pkg.repository.url
+    .replace(/^git\+/, '')
+    .replace(/\.git$/, '');
+  assert.equal(manifest.homepage_url, fromPackage);
+  assert.equal(manifest.developer?.url, 'https://github.com/QZLin');
+  assert.equal(typeof manifest.developer?.name, 'string');
+});
+
+test('ships the licence it claims', () => {
+  assert.equal(pkg.license, 'GPL-3.0-only');
+  const licence = readFileSync(licenseUrl, 'utf8');
+  assert.match(licence, /GNU GENERAL PUBLIC LICENSE/);
+  assert.match(licence, /Version 3, 29 June 2007/);
 });
 
 test('requests no privileged surface at all', () => {
@@ -68,8 +86,17 @@ test('declares the Firefox floor that has MAIN-world content scripts', () => {
   assert.deepEqual(gecko.data_collection_permissions, { required: ['none'] });
 });
 
-test('contains no remote code, no eval and no URL', () => {
-  assert.equal(/https?:\/\//.test(manifestText), false, 'no remote references');
+test('loads no remote code and no eval', () => {
+  // URLs are allowed as *metadata* (`homepage_url`, `developer.url`) — and the only ones
+  // present must be the project's own, so a stray CDN or analytics host cannot slip in.
+  for (const entry of manifest.content_scripts ?? []) {
+    for (const path of entry.js ?? []) {
+      assert.equal(/^https?:/i.test(path), false, `remote script: ${path}`);
+    }
+  }
+  for (const url of manifestText.match(/https?:\/\/[^"]+/g) ?? []) {
+    assert.match(url, /^https:\/\/github\.com\/QZLin(\/|$)/, `unexpected URL: ${url}`);
+  }
   assert.equal(/\beval\b/.test(manifestText), false);
   assert.equal(/new\s+Function/.test(manifestText), false);
 });
