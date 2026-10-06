@@ -3,17 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Firefox-only WebExtension: stop accidental local-file drops from navigating the current tab, without breaking normal file uploads.",
+  "description": "Firefox-only WebExtension: prevent accidental local-file drops from navigating the current tab, without breaking normal file uploads.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run typecheck && pnpm run build",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "node scripts/test.mjs",
+    "check": "pnpm run typecheck && pnpm run typecheck:test && pnpm run build && pnpm run test",
     "lint": "web-ext lint --source-dir dist",
     "start": "pnpm run build && node scripts/dev.mjs",
     "start:check": "pnpm run build && node scripts/dev.mjs --check"
   },
   "devDependencies": {
+    "@types/jsdom": "^30.0.0",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.1.2",
     "typescript": "^7.0.2",
     "web-ext": "^10.7.0"
   }

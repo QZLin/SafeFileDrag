@@ -94,19 +94,26 @@ by the time the event finished?"
 | `src/content.ts` | The Firefox adapter: captures native DOM references at `document_start` and wires the real `window`/`document` into the guard. |
 | `manifest.json` | MV3 manifest (copied into `dist/` by the build). |
 | `scripts/build.mjs` | esbuild bundle → `dist/content.js`, then copies the manifest. |
+| `scripts/test.mjs` | Bundles the test suite and runs it on Node's built-in test runner. |
+| `test/` | The automated suite (jsdom-backed, no test framework). |
+| `test/support/` | Harness: jsdom page, listener bookkeeping, drag payloads, globals bridge for `src/content.ts`. |
+| `scripts/dev.mjs` | Manual-test launcher: serves `dev/` and opens Firefox with the add-on loaded. |
+| `dev/index.html` | The manual playground (zones that need a real Firefox and a real file drag). |
 | `dist/` | The loadable (temporary) add-on. Generated; not minified on purpose. |
 
 ## Build
 
 ```sh
 pnpm install
-pnpm run check      # tsc --noEmit && build
+pnpm run check      # typecheck (src + tests) && build && test
 ```
 
 or separately:
 
 ```sh
 pnpm run typecheck  # tsc --noEmit (TypeScript 7)
+pnpm run typecheck:test  # tsc -p tsconfig.test.json (sources + tests)
+pnpm run test       # node --test over the bundled suite
 pnpm run build      # -> dist/manifest.json, dist/content.js
 ```
 
@@ -137,6 +144,76 @@ content scripts. Firefox 128–139 simply ignore that metadata key.
 `about:`, the PDF viewer, reader view and other privileged pages are deliberately not
 covered (`<all_urls>` never matched them anyway); iframes are covered, because the
 script runs in every frame.
+
+## Manual verification
+
+`pnpm start` builds the extension, serves `dev/index.html` on
+`http://127.0.0.1:8788/` and opens Firefox with the add-on installed temporarily — one
+command, visible window, no headless. (`pnpm start:check` does the same setup without
+launching a browser.)
+
+The page is a manual playground of nine zones; each one states its own pass criterion,
+and a banner at the top plus the tab title reveal immediately if a drop navigated the
+tab. Checked on Firefox 158 Developer Edition:
+
+| Zone | Scenario | Result |
+| --- | --- | --- |
+| 1 | empty area, no listeners at all | no reaction, no navigation |
+| 2 | `<input type="file" multiple>` | file received, `change` fires |
+| 3 | dropzone with `dragover` + `drop` | file received |
+| 4 | dropzone with `drop` only (no `dragover` handler) | `drop` fires, file received, no navigation |
+| 5 | `dragover` cancelled, no `drop` handler | nothing happens, no navigation |
+| 6 | `contenteditable` | text drag inserts, file drag does nothing |
+| 7 | `<textarea>` | text drag unaffected |
+| 8 | link drag | URL inserted, guard never engages |
+| 9 | `<input type="file">` inside an open shadow root (web component) | file received, `change` fires |
+
+Zone 2 is the important one: it is what proves the native upload path is untouched.
+Zone 4 is the interesting one: the page never cancels `dragover`, so the guard's own
+cancellation is what lets that `drop` fire at all. Zone 9 is the newest: it is the only
+place where the browser's own retargeting ("which element is `event.target` inside a
+shadow tree?") is exercised by a real drag, and it is why the guard reads the composed
+path as well as `event.target`.
+
+## Automated tests
+
+```sh
+pnpm run test        # 89 tests, Node's built-in runner
+pnpm run check       # typecheck (src + tests) && build && test
+```
+
+No test framework and no extra runtime dependency: `scripts/test.mjs` bundles each
+`test/**/*.test.ts` with esbuild (the compiler the build already uses) into
+`.test-build/` and runs `node --test` over the result. The suite imports the shipping
+sources directly, and it runs against **jsdom** rather than a hand-written DOM stub.
+
+Why jsdom matters here: the guard is a bet about *when* listeners run, and a simulation
+written for this repository could be made to agree with the guard by accident. jsdom
+implements DOM dispatch the way the specification describes, so the semantics are
+borrowed rather than asserted. `test/dispatch.test.ts` pins the specific behaviours the
+guard depends on — capture/bubble order, listeners added mid-dispatch still running on
+nodes not yet visited, `once` removal before the callback, `cancelBubble` readable by
+later listeners on the same node, shadow retargeting, and the `preventDefault()` rules.
+The only thing faked is the drag payload: jsdom has no `DataTransfer`, so a plain `Event`
+carries a `dataTransfer` property.
+
+| File | Covers |
+| --- | --- |
+| `dispatch.test.ts` | The DOM semantics the guard is built on. |
+| `is-file-drag.test.ts` | Pure unit tests for `isFileDrag()`: which payloads count as a file drag, and which must not (text, link, HTML, unreadable payloads). |
+| `policy.test.ts` | The verdict matrix: every kind of target against every kind of drag. |
+| `propagation.test.ts` | Timing, `stopPropagation` / `stopImmediatePropagation`, late-attached handlers, and the two "KNOWN HOLE" cases. |
+| `robustness.test.ts` | Hostile environments: throwing `composedPath`, garbage paths, nodes that refuse listeners, 300-deep trees, 50 drops in a row, leaks. |
+| `shadow-dom.test.ts` | Open and closed shadow roots, including nested ones. |
+| `content.test.ts` | The real `src/content.ts` against jsdom, plus the once-per-window install marker. |
+| `artifact.test.ts` | `dist/content.js` and `dist/manifest.json` as built (skipped when `dist/` is absent — `pnpm run check` builds first). |
+| `manifest.test.ts` | Manifest invariants: MV3, no permissions, no remote code, MAIN world, `document_start`, all frames. |
+
+Writing these tests paid for itself immediately: the open-shadow-root case below was a
+real bug that the manual playground had not covered.
+
+`@types/jsdom` depends on `@types/node`, so `node:test`, `node:assert/strict` and
+`node:fs` type-check in the suite without adding `@types/node` as a direct dependency.
 
 ## Design notes and deliberate trade-offs
 
@@ -173,26 +250,47 @@ script runs in every frame.
   file drop defeats the guard: the remaining listeners on that node — including the
   guard's observer — are skipped, and propagation stops before any later node could
   report a verdict. (`stopImmediatePropagation()` *with* `preventDefault()` works
-  fine, because the page already did the guard's job.)
+  fine, because the page already did the guard's job.) Covered as a characterisation
+  test in `test/propagation.test.ts`.
 * The same applies to `stopPropagation()` called from a `window` **capture** listener,
   which is the only listener that can run before the guard's own `window` capture
   listener and cut off the whole path.
-* Drops inside **closed** shadow roots are seen only through retargeting, so a file
-  input nested in a closed shadow tree may not be recognised as a native upload
-  target and will be blocked (fail-safe direction).
+* Drops inside **closed** shadow roots are seen only through retargeting, and the
+  composed path stops at the host, so a file input nested in a closed shadow tree cannot
+  be recognised as an upload target and will be blocked (fail-safe direction). Open
+  shadow roots *are* handled: the guard reads the deepest node of the composed path in
+  addition to `event.target`.
+* If `DataTransfer` cannot be read at all (nothing but throwing accessors), the event is
+  indistinguishable from a text drag and is left alone. Cancelling on "no readable
+  evidence" would break ordinary text drops on every page, so this trade-off is
+  deliberate. `test/robustness.test.ts` documents it.
 * Non-file drags are not intercepted at all, so a page whose own default action for,
   say, a link drop navigates is out of scope — this extension is about files.
 
+### A bug the tests caught
+
+File inputs inside **open** shadow roots used to be blocked. `event.target` is retargeted
+to the shadow host for every listener outside the shadow tree, so the guard saw the host
+(a `<div>`, in the common `<my-uploader><input type="file"></my-uploader>` shape) and
+concluded it was not an upload control — cancelling a drop that the browser would have
+handled correctly. The composed path still names the real target, so the guard now tests
+that as well. A second half of the same bug lived in `src/content.ts`: path nodes are
+wrapped in per-target adapters for identity checks, and the adapter was being handed to
+`isNativeFileDropTarget()` — which promptly failed, because an adapter is not an
+`Element`. `test/shadow-dom.test.ts` and `test/content.test.ts` cover both halves, and
+zone 9 of the playground covers it with a real drag.
+
 ## Next steps (not done yet)
 
-The scenario verification was intentionally deferred. Still to add:
+The nine zones documented under "Manual verification" were checked by hand, and the suite
+covers the policy and its propagation corner cases. What is still uncovered:
 
-* standalone HTML pages for the scenarios (plain page, `<input type="file">`, custom
-  dropzone with `dragover`+`drop`, drop-only dropzone, dropzone with `dragover` but no
-  `drop` handling, capture-phase handler, bubble-phase handler,
-  `preventDefault()`+`stopPropagation()`, `preventDefault()`+`stopImmediatePropagation()`,
-  React-style document delegation, text / link / image drags, `contenteditable`, and a
-  dropzone that must *not* vouch for the rest of the page);
-* an automated harness for the same scenarios, driving `installGuard()` against a
-  simulated DOM and propagation path, so the policy is regression-tested without a
-  browser.
+* **Real-browser coverage of the Firefox-only parts.** Everything jsdom cannot answer:
+  that Firefox really navigates the tab on an unconsumed file drop, that its native
+  `<input type="file">` accepts a drop without anyone cancelling `dragover`
+  (`CANCEL_DRAGOVER_ON_NATIVE_TARGET`), and the real `DataTransfer` shape during
+  `dragenter`/`dragover`. A browser-driven test would need native input injection that
+  WebDriver cannot do, so this stays manual — which is what the playground is for.
+* Playground zones for an **iframe** drop and for the propagation corner cases that the
+  suite already covers in jsdom; they would confirm the same behaviour in Gecko.
+
