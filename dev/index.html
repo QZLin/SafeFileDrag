@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SafeFileDrag 手动测试页 —— 标题若变化说明已导航</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px 20px 40px; font: 14px/1.6 system-ui, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  .banner { padding: 10px 12px; border-radius: 8px; background: #1f6feb; color: #fff; font-weight: 600; }
+  .banner small { display: block; font-weight: 400; opacity: .9; }
+  code { background: rgba(127,127,127,.18); padding: 1px 5px; border-radius: 4px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-top: 16px; }
+  .zone { border: 2px dashed #8a8a8a; border-radius: 10px; padding: 12px; min-height: 130px; }
+  .zone h3 { margin: 0 0 6px; font-size: 13px; text-transform: none; }
+  .zone p { margin: 0; font-size: 12px; opacity: .85; }
+  .zone.hot { border-color: #1f6feb; background: rgba(31,111,235,.12); }
+  .zone .out { margin-top: 8px; font-size: 12px; color: #1a7f37; word-break: break-all; }
+  #editable { min-height: 70px; border: 1px solid #8a8a8a; border-radius: 6px; padding: 6px; background: rgba(127,127,127,.08); }
+  textarea { width: 100%; min-height: 60px; font: inherit; }
+  pre { background: rgba(127,127,127,.12); padding: 10px; border-radius: 8px; max-height: 320px; overflow: auto; margin: 0; font-size: 12px; }
+  .ok { color: #1a7f37; } .bad { color: #cf222e; }
+  button { font: inherit; padding: 2px 10px; }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  当前页面仍然存在 → 防导航生效
+  <small>如果这个蓝色横幅消失（变成文件内容、下载提示或空白页），说明拖入的文件把当前标签页导航掉了 = 失败。</small>
+</div>
+
+<h1>SafeFileDrag 手动测试页</h1>
+<p>
+  地址：<code id="here"></code><br>
+  本页的 <code>window</code> 日志监听器只写日志、从不调用 <code>preventDefault()</code>，因此不会影响扩展的判定。
+  每块的判定标准写在块内。
+</p>
+
+<div class="grid">
+
+  <div class="zone" id="plain">
+    <h3>1. 空白区（完全没有监听器）</h3>
+    <p>把本地文件拖到这里。</p>
+    <p class="ok">期望：页面无任何反应，也不导航。</p>
+  </div>
+
+  <div class="zone" id="native-zone">
+    <h3>2. &lt;input type="file"&gt;</h3>
+    <p>把本地文件拖到下面的输入框上（不是这块空白处）。</p>
+    <input type="file" id="native" multiple>
+    <div class="out" id="native-out"></div>
+    <p class="ok">期望：文件名出现在这里（原生默认动作生效）。</p>
+  </div>
+
+  <div class="zone" id="dropzone">
+    <h3>3. 自定义 dropzone（dragover + drop 均 preventDefault）</h3>
+    <p>拖入文件，边框会高亮。</p>
+    <div class="out" id="dropzone-out"></div>
+    <p class="ok">期望：显示文件名。</p>
+  </div>
+
+  <div class="zone" id="droponly">
+    <h3>4. 只监听 drop 的 dropzone</h3>
+    <p>没有任何 dragover 监听器（扩展需要放行/补齐 dragover 才能让 drop 触发）。</p>
+    <div class="out" id="droponly-out"></div>
+    <p>期望：drop 触发并显示文件名，同时不导航。</p>
+  </div>
+
+  <div class="zone" id="dragoveronly">
+    <h3>5. 只监听 dragover（取消了 dragover，但不处理 drop）</h3>
+    <p>把文件拖到这里再松手。</p>
+    <div class="out" id="dragoveronly-out"></div>
+    <p class="ok">期望：什么都不发生，不导航。</p>
+  </div>
+
+  <div class="zone" id="editable-zone">
+    <h3>6. contenteditable</h3>
+    <div id="editable" contenteditable="true">在这里拖入一段选中的文本（应当正常插入）；也把本地文件拖进来（应当不导航）。</div>
+    <p class="ok">期望：文本正常插入；文件拖入无反应。</p>
+  </div>
+
+  <div class="zone" id="textarea-zone">
+    <h3>7. textarea（文本拖放）</h3>
+    <textarea id="textarea" placeholder="把一段选中的文本拖进来，应当正常插入。"></textarea>
+    <p class="ok">期望：文本拖放不受影响。</p>
+  </div>
+
+  <div class="zone" id="link-zone">
+    <h3>8. 链接 / 图片拖放</h3>
+    <p>从这里把链接拖到上面的 contenteditable 或 textarea：<a href="https://example.com/" id="draggable-link">example.com</a></p>
+    <p class="ok">期望：链接 URL 正常插入，扩展完全不介入。</p>
+  </div>
+
+</div>
+
+<h2>事件日志 <button id="clear" type="button">清空</button></h2>
+<pre id="log"></pre>
+
+<script>
+(function () {
+  'use strict';
+
+  var logEl = document.getElementById('log');
+  var here = document.getElementById('here');
+  here.textContent = location.href;
+
+  function log(message) {
+    var t = (performance.now() / 1000).toFixed(2);
+    logEl.textContent += '[' + t + 's] ' + message + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function fileNames(dataTransfer) {
+    if (!dataTransfer) return '(no dataTransfer)';
+    var names = [];
+    if (dataTransfer.files) {
+      for (var i = 0; i < dataTransfer.files.length; i++) names.push(dataTransfer.files[i].name);
+    }
+    return names.length ? names.join(', ') : '(no files)';
+  }
+
+  document.getElementById('clear').addEventListener('click', function () {
+    logEl.textContent = '';
+  });
+
+  // --- diagnostics only: never calls preventDefault(), so the extension's verdict
+  // --- is unaffected. Runs on `window` in the bubble phase, i.e. after the page's
+  // --- own handlers, so it shows what the page made of the event.
+  var lastOverTarget = null;
+  ['dragenter', 'dragover', 'drop'].forEach(function (type) {
+    window.addEventListener(type, function (event) {
+      var target = event.target;
+      var id = (target && (target.id || target.tagName)) || '?';
+      if (type === 'dragover') {
+        if (id === lastOverTarget) return;
+        lastOverTarget = id;
+      }
+      var types = event.dataTransfer ? Array.prototype.join.call(event.dataTransfer.types, ',') : '(none)';
+      log('window ' + type + ' on #' + id + ' — defaultPrevented=' + event.defaultPrevented + ' types=[' + types + ']');
+    });
+  });
+
+  // --- 2. native <input type="file"> -------------------------------------------
+  var nativeInput = document.getElementById('native');
+  nativeInput.addEventListener('change', function () {
+    var names = Array.prototype.map.call(nativeInput.files, function (f) { return f.name; });
+    document.getElementById('native-out').textContent = 'change: ' + (names.join(', ') || '(none)');
+    log('input[type=file] change: ' + (names.join(', ') || '(none)'));
+  });
+
+  // --- 3. custom dropzone: dragover + drop, both preventDefault -----------------
+  var dropzone = document.getElementById('dropzone');
+  dropzone.addEventListener('dragover', function (event) {
+    event.preventDefault();
+    dropzone.classList.add('hot');
+    log('dropzone dragover: preventDefault()');
+  });
+  dropzone.addEventListener('dragleave', function () {
+    dropzone.classList.remove('hot');
+  });
+  dropzone.addEventListener('drop', function (event) {
+    event.preventDefault();
+    dropzone.classList.remove('hot');
+    var names = fileNames(event.dataTransfer);
+    document.getElementById('dropzone-out').textContent = 'drop: ' + names;
+    log('dropzone drop: preventDefault() files=' + names);
+  });
+
+  // --- 4. drop-only dropzone: no dragover listener at all -----------------------
+  var droponly = document.getElementById('droponly');
+  droponly.addEventListener('drop', function (event) {
+    event.preventDefault();
+    var names = fileNames(event.dataTransfer);
+    document.getElementById('droponly-out').textContent = 'drop: ' + names;
+    log('droponly drop: preventDefault() files=' + names);
+  });
+
+  // --- 5. dragover-only: cancels dragover, has no drop handler -------------------
+  var dragoveronly = document.getElementById('dragoveronly');
+  dragoveronly.addEventListener('dragover', function (event) {
+    event.preventDefault();
+    document.getElementById('dragoveronly-out').textContent = 'dragover: preventDefault() (no drop handler)';
+  });
+
+  log('page ready — drag a local file from the file manager onto the zones above');
+})();
+</script>
+</body>
+</html>
