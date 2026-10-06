@@ -94,9 +94,12 @@ by the time the event finished?"
 | `src/content.ts` | The Firefox adapter: captures native DOM references at `document_start` and wires the real `window`/`document` into the guard. |
 | `manifest.json` | MV3 manifest (copied into `dist/` by the build). |
 | `scripts/build.mjs` | esbuild bundle → `dist/content.js`, then copies the manifest. |
-| `scripts/test.mjs` | Bundles the test suite and runs it on Node's built-in test runner. |
-| `test/` | The automated suite (jsdom-backed, no test framework). |
+| `scripts/test.mjs` | Bundles the jsdom suite and runs it on Node's built-in test runner. |
+| `scripts/test-gecko.mjs` | Drives real Firefox (through `web-ext run`) and collects the probe page's report. |
+| `scripts/lib/` | Shared by both launchers: finding Firefox/web-ext, the local static server. |
+| `test/` | The jsdom suite (no test framework). |
 | `test/support/` | Harness: jsdom page, listener bookkeeping, drag payloads, globals bridge for `src/content.ts`. |
+| `test/gecko/index.html` | The probe page: asserts inside real Gecko and posts its results back. |
 | `scripts/dev.mjs` | Manual-test launcher: serves `dev/` and opens Firefox with the add-on loaded. |
 | `dev/index.html` | The manual playground (zones that need a real Firefox and a real file drag). |
 | `dist/` | The loadable (temporary) add-on. Generated; not minified on purpose. |
@@ -105,16 +108,18 @@ by the time the event finished?"
 
 ```sh
 pnpm install
-pnpm run check      # typecheck (src + tests) && build && test
+pnpm run check      # typecheck (src + tests) && build && test   (no browser needed)
+pnpm run check:full # the above, then the real-Gecko check       (needs Firefox)
 ```
 
 or separately:
 
 ```sh
-pnpm run typecheck  # tsc --noEmit (TypeScript 7)
+pnpm run typecheck       # tsc --noEmit (TypeScript 7)
 pnpm run typecheck:test  # tsc -p tsconfig.test.json (sources + tests)
-pnpm run test       # node --test over the bundled suite
-pnpm run build      # -> dist/manifest.json, dist/content.js
+pnpm run test            # node --test over the bundled jsdom suite
+pnpm run test:gecko      # the same promises, checked in real Firefox
+pnpm run build           # -> dist/manifest.json, dist/content.js
 ```
 
 The bundle is deliberately **not** minified: it is small, security-sensitive, and
@@ -175,7 +180,7 @@ place where the browser's own retargeting ("which element is `event.target` insi
 shadow tree?") is exercised by a real drag, and it is why the guard reads the composed
 path as well as `event.target`.
 
-## Automated tests
+## The jsdom test suite
 
 ```sh
 pnpm run test        # 89 tests, Node's built-in runner
@@ -195,7 +200,9 @@ guard depends on — capture/bubble order, listeners added mid-dispatch still ru
 nodes not yet visited, `once` removal before the callback, `cancelBubble` readable by
 later listeners on the same node, shadow retargeting, and the `preventDefault()` rules.
 The only thing faked is the drag payload: jsdom has no `DataTransfer`, so a plain `Event`
-carries a `dataTransfer` property.
+carries a `dataTransfer` property. jsdom's shadow retargeting — the one place where a DOM
+implementation could plausibly differ, and the place the guard's native-target check
+depends on — was cross-checked against Gecko by the check below, and agrees.
 
 | File | Covers |
 | --- | --- |
@@ -209,11 +216,47 @@ carries a `dataTransfer` property.
 | `artifact.test.ts` | `dist/content.js` and `dist/manifest.json` as built (skipped when `dist/` is absent — `pnpm run check` builds first). |
 | `manifest.test.ts` | Manifest invariants: MV3, no permissions, no remote code, MAIN world, `document_start`, all frames. |
 
-Writing these tests paid for itself immediately: the open-shadow-root case below was a
-real bug that the manual playground had not covered.
+Writing these tests paid for itself immediately: they found the open-shadow-root bug
+described at the end of this section, and the real-Gecko check below confirmed it.
 
-`@types/jsdom` depends on `@types/node`, so `node:test`, `node:assert/strict` and
-`node:fs` type-check in the suite without adding `@types/node` as a direct dependency.
+`@types/node` is a direct devDependency now; before that it only arrived transitively
+through `@types/jsdom`, which would have broken `typecheck:test` the moment jsdom was
+dropped.
+
+## The real-Gecko check
+```sh
+pnpm run test:gecko              # headless (default)
+pnpm run test:gecko -- --headed  # watch it happen in a window
+```
+
+jsdom is not Gecko, so the suite cannot settle the things that only a browser decides.
+`scripts/test-gecko.mjs` starts the local static server, launches Firefox through
+`web-ext run` with `dist/` installed as a temporary add-on, and waits for
+`test/gecko/index.html` to POST its report back. Headless by default; no WebDriver, no
+geckodriver, no extra dependency.
+
+Twelve checks, each of them something jsdom cannot answer:
+
+| Check | What the browser reported (Firefox 158 Developer Edition) |
+| --- | --- |
+| install marker visible to a `<head>` script | `true` — the content script really runs in the page's world at `document_start` |
+| no WebExtension APIs in the page world | `typeof browser`/`chrome` are `undefined` — `world: "MAIN"` is not an isolated world |
+| a real `DataTransfer` with a `File` item | `types` is `["Files"]` — the token `isFileDrag()` looks for |
+| a file drop on a plain element | `dragenter=true dragover=true drop=true` (all cancelled) |
+| a file drop on `<input type="file">` | all three phases left alone, so the control can receive the file |
+| a disabled file input | cancelled |
+| a file input inside an **open** shadow root | `event.target` is the host (`div#component`) but `composedPath()[0]` is the input; the drop is left alone |
+| a file input inside a **closed** shadow root | `event.target` is the host and the path stops there; cancelled (fail-safe) |
+| a text drag | not touched, `types` is `["text/plain"]` |
+| a dropzone that consumes the drop | its handler receives `zone.pdf`, and a plain element in the same page is still cancelled |
+| `stopPropagation()` without `preventDefault()` | still cancelled — `cancelBubble` detection works in Gecko |
+| `stopImmediatePropagation()` without `preventDefault()` | **not** cancelled — the documented limitation reproduces in Gecko |
+
+What even this cannot prove: whether Firefox really navigates the tab on an unconsumed
+file drop, and whether its native `<input type="file">` accepts a real drop without
+anyone cancelling `dragover`. Both need a drag started from the operating system's file
+manager, which WebDriver cannot inject — so they stay in the manual playground, which is
+what zone 2 is for.
 
 ## Design notes and deliberate trade-offs
 
@@ -277,20 +320,33 @@ handled correctly. The composed path still names the real target, so the guard n
 that as well. A second half of the same bug lived in `src/content.ts`: path nodes are
 wrapped in per-target adapters for identity checks, and the adapter was being handed to
 `isNativeFileDropTarget()` — which promptly failed, because an adapter is not an
-`Element`. `test/shadow-dom.test.ts` and `test/content.test.ts` cover both halves, and
-zone 9 of the playground covers it with a real drag.
+`Element`.
+
+The jsdom suite found it (`test/shadow-dom.test.ts`, `test/content.test.ts`), and the
+real-Geiger check now confirms both the premise and the fix in Firefox — `event.target`
+really is `div#component` while `composedPath()[0]` really is `input#shadow-input`.
+Reverting just those two source files makes `pnpm run test:gecko` report 11/12, failing
+on exactly that check with `dragenter=true dragover=true drop=true`: a legitimate upload
+cancelled in a real browser. Zone 9 of the playground reproduces it by hand.
 
 ## Next steps (not done yet)
 
-The nine zones documented under "Manual verification" were checked by hand, and the suite
-covers the policy and its propagation corner cases. What is still uncovered:
+The nine zones documented under "Manual verification" were checked by hand, the jsdom
+suite covers the policy and its propagation corner cases, and the real-Geiger check covers
+the browser-specific dispatch behaviour. What is left:
 
-* **Real-browser coverage of the Firefox-only parts.** Everything jsdom cannot answer:
-  that Firefox really navigates the tab on an unconsumed file drop, that its native
-  `<input type="file">` accepts a drop without anyone cancelling `dragover`
-  (`CANCEL_DRAGOVER_ON_NATIVE_TARGET`), and the real `DataTransfer` shape during
-  `dragenter`/`dragover`. A browser-driven test would need native input injection that
-  WebDriver cannot do, so this stays manual — which is what the playground is for.
-* Playground zones for an **iframe** drop and for the propagation corner cases that the
-  suite already covers in jsdom; they would confirm the same behaviour in Gecko.
+* **The two claims that need a real drag from the OS.** That Firefox really navigates the
+  tab on an unconsumed file drop, and that its native `<input type="file">` accepts a drop
+  without anyone cancelling `dragover` (`CANCEL_DRAGOVER_ON_NATIVE_TARGET`). Injecting
+  that would mean synthesising mouse input over a file manager window, which WebDriver
+  cannot do and which would hijack the machine's own pointer — so it stays manual, and the
+  playground is built for it.
+* **The real `DataTransfer` shape of an OS file drag.** The probe page shows a
+  `DataTransfer` built from a `File` reports `["Files"]`; whether a real drag additionally
+  reports `application/x-moz-file` (the historical token `isFileDrag()` also accepts) can
+  only be seen with a real drag. The playground's log prints `dataTransfer.types` for
+  every event precisely so this is visible.
+* Playground zones for an **iframe** drop; iframes are already covered by `all_frames` and
+  by the jsdom suite, but not yet by a real drag.
+
 

@@ -15,36 +15,17 @@
  *   pnpm start -- --arg=-headless
  *   pnpm start -- --firefox="D:\\other\\firefox.exe"
  */
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
-import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { killWebExtTree, resolveFirefoxPath, resolveWebExtBin, spawnWebExtRun } from './lib/firefox.mjs';
+import { startStaticServer } from './lib/static-server.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEV_DIR = join(ROOT, 'dev');
 const DIST_DIR = join(ROOT, 'dist');
-const HOST = '127.0.0.1';
 const BASE_PORT = 8788;
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.txt': 'text/plain; charset=utf-8',
-};
-
-/** Where Firefox usually lives on Windows; `FIREFOX_BIN` overrides everything. */
-const FIREFOX_CANDIDATES = [
-  process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Mozilla Firefox', 'firefox.exe'),
-  'C:\\Program Files\\Firefox Developer Edition\\firefox.exe',
-  'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
-  'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe',
-].filter(Boolean);
 
 function parseArgs(argv) {
   const options = { check: false, port: null, firefox: null, passthrough: [] };
@@ -55,71 +36,6 @@ function parseArgs(argv) {
     else options.passthrough.push(arg);
   }
   return options;
-}
-
-function resolveFirefox(explicit) {
-  if (explicit) return existsSync(explicit) ? explicit : null;
-  if (process.env.FIREFOX_BIN) {
-    return existsSync(process.env.FIREFOX_BIN) ? process.env.FIREFOX_BIN : null;
-  }
-  return FIREFOX_CANDIDATES.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-/** Resolves the local `web-ext` CLI entry point (its exports map hides the bin). */
-function resolveWebExtBin() {
-  const entry = fileURLToPath(import.meta.resolve('web-ext')); // .../web-ext/index.js
-  const bin = join(dirname(entry), 'bin', 'web-ext.js');
-  return existsSync(bin) ? bin : null;
-}
-
-function createStaticServer() {
-  return createServer(async (request, response) => {
-    const send = (status, type, body) => {
-      response.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
-      response.end(body);
-    };
-
-    try {
-      const url = new URL(request.url ?? '/', `http://${HOST}`);
-      let pathname = decodeURIComponent(url.pathname);
-      if (pathname.endsWith('/')) pathname += 'index.html';
-
-      const filePath = resolve(join(DEV_DIR, normalize(pathname)));
-      if (filePath !== DEV_DIR && !filePath.startsWith(DEV_DIR + sep)) {
-        send(403, 'text/plain; charset=utf-8', 'forbidden');
-        return;
-      }
-
-      const body = await readFile(filePath);
-      send(200, MIME_TYPES[extname(filePath).toLowerCase()] ?? 'application/octet-stream', body);
-    } catch {
-      send(404, 'text/plain; charset=utf-8', 'not found');
-    }
-  });
-}
-
-async function listen(server, port) {
-  for (let candidate = port; candidate < port + 10; candidate++) {
-    try {
-      await new Promise((resolvePromise, rejectPromise) => {
-        const onError = (error) => {
-          server.removeListener('listening', onListening);
-          rejectPromise(error);
-        };
-        const onListening = () => {
-          server.removeListener('error', onError);
-          resolvePromise();
-        };
-        server.once('error', onError);
-        server.once('listening', onListening);
-        server.listen(candidate, HOST);
-      });
-      return candidate;
-    } catch (error) {
-      if (error?.code !== 'EADDRINUSE') throw error;
-    }
-  }
-  throw new Error(`no free port in ${port}..${port + 9}`);
 }
 
 async function main() {
@@ -133,16 +49,18 @@ async function main() {
   if (!webExtBin) {
     problems.push('the local web-ext CLI was not found — run `pnpm install`.');
   }
-  const firefox = resolveFirefox(options.firefox);
+  const firefox = resolveFirefoxPath(options.firefox);
   if (!firefox) {
     problems.push(
       'no Firefox executable found — set FIREFOX_BIN, pass --firefox=<path>, or let web-ext search for it.',
     );
   }
 
-  const server = createStaticServer();
-  const port = await listen(server, Number(options.port) || BASE_PORT);
-  const pageUrl = `http://${HOST}:${port}/`;
+  const server = await startStaticServer({
+    root: DEV_DIR,
+    port: Number(options.port) || BASE_PORT,
+  });
+  const pageUrl = server.url;
 
   if (options.check) {
     let page = 'unreachable';
@@ -183,24 +101,15 @@ async function main() {
   console.log('  Drop a local file on the page and check the log; close Firefox (or press');
   console.log('  Ctrl+C here) to stop. Rebuild + restart to pick up extension changes.');
 
-  const args = [
+  const child = spawnWebExtRun({
     webExtBin,
-    'run',
-    '--source-dir',
-    DIST_DIR,
-    '--start-url',
-    pageUrl,
-    '--firefox',
+    sourceDir: DIST_DIR,
+    startUrl: pageUrl,
     firefox,
-    '--no-input',
-    ...options.passthrough,
-  ];
+    extra: options.passthrough,
+  });
 
-  const child = spawn(process.execPath, args, { stdio: 'inherit' });
-
-  const stop = () => {
-    if (!child.killed) child.kill();
-  };
+  const stop = () => killWebExtTree(child);
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 
