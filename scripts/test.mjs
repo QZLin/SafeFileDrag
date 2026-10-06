@@ -20,7 +20,9 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const testDir = join(root, 'test');
 const outDir = join(root, '.test-build');
-const passthrough = process.argv.slice(2);
+// pnpm forwards the `--` separator itself, and Node would read a bare `--` as the end of
+// its own options — turning the forwarded flags into file paths.
+const passthrough = process.argv.slice(2).filter((arg) => arg !== '--');
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });

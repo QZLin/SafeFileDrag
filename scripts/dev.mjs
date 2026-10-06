@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { killWebExtTree, resolveFirefoxPath, resolveWebExtBin, spawnWebExtRun } from './lib/firefox.mjs';
+import { killWebExtTree, resolveFirefoxPath, resolveWebExtBin, spawnWebExtRun, webExtRunArgs } from './lib/firefox.mjs';
 import { startStaticServer } from './lib/static-server.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +30,9 @@ const BASE_PORT = 8788;
 function parseArgs(argv) {
   const options = { check: false, port: null, firefox: null, passthrough: [] };
   for (const arg of argv) {
+    // pnpm forwards the `--` separator itself; web-ext must not see it, or it would treat
+    // everything after it as positional arguments.
+    if (arg === '--') continue;
     if (arg === '--check' || arg === '--dry-run') options.check = true;
     else if (arg.startsWith('--port=')) options.port = Number(arg.slice('--port='.length));
     else if (arg.startsWith('--firefox=')) options.firefox = arg.slice('--firefox='.length);
@@ -96,7 +99,7 @@ async function main() {
     console.log(`  add-on      : ${DIST_DIR}`);
     console.log(`  firefox     : ${firefox ?? '(not found; web-ext will search)'}`);
     console.log(`  web-ext CLI : ${webExtBin ?? '(not found)'}`);
-    console.log(`  command     : node ${webExtBin} run --source-dir ${DIST_DIR} --start-url ${pageUrl}${firefox ? ` --firefox ${firefox}` : ''} --no-input`);
+    console.log(`  command     : node ${webExtRunArgs({ webExtBin, sourceDir: DIST_DIR, startUrl: pageUrl, firefox, extra: options.passthrough }).join(' ')}`);
     if (problems.length) {
       console.error('\nproblems:');
       for (const problem of problems) console.error(`  - ${problem}`);

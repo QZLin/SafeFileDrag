@@ -180,6 +180,46 @@ environment (`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`), from a `.env` file next 
 `package.json`, or from `--api-key=` / `--api-secret=`. Create them at
 <https://addons.mozilla.org/developers/addon/api/key/>.
 
+### First listed submission needs add-on metadata on AMO
+
+Unlisted signing needs nothing beyond the credentials. A **listed** version is different:
+AMO rejects the upload until the *add-on* has licence metadata, with
+
+```
+This field, or custom_license, is required for listed versions.
+```
+
+That field lives on AMO, not in the package. A WebExtension manifest cannot declare a
+licence, and `web-ext sign` sends only what the manifest contains, so it cannot supply it.
+Per the AMO API, a listed version requires a version `license` (or `custom_license`), an
+add-on **name**, a **summary**, and **categories** for every app the version supports. The
+first listed submission therefore has to be made once in the web UI (or by hand through the
+API):
+
+1. Check <https://addons.mozilla.org/developers/addons/> first: a rejected submission may
+   already have created the add-on record, in which case open it and set the licence there
+   instead of starting over.
+2. Otherwise <https://addons.mozilla.org/developers/addon/submit/> → *On this site*
+   (listed) → upload `web-ext-artifacts/safe_file_drag-1.0.0.zip` (from `pnpm web-ext
+   build`) → fill in name, summary and categories → choose the licence.
+
+Once a listed version with a licence exists, later versions inherit it, so
+`pnpm run sign -- --channel=listed` works from then on.
+
+**Which licence to choose.** AMO's predefined list is SPDX-slugged and contains no
+`GPL-3.0-or-later` — only `GPL-3.0-only`, `GPL-2.0-only`, `LGPL-2.1-only`,
+`LGPL-3.0-only`, `AGPL-3.0-only`, `MPL-2.0`, `Apache-2.0`, `MIT`, `ISC`, `BSD-2-Clause`,
+`Unlicense` and `all-rights-reserved`. To keep the "or any later version" grant this
+project declares, pick **Custom License** and use:
+
+* name: `GNU General Public License v3.0 or later`
+* text: the notice in the [License](#license) section below, or a link to
+  <https://github.com/QZLin/SafeFileDrag/blob/main/LICENSE>
+
+Choosing `GPL-3.0-only` would be simpler but would contradict `package.json`. The
+alternative, if a custom licence is unwanted, is to move the project itself to
+`GPL-3.0-only`.
+
 ### The two warnings that remain
 
 `pnpm run lint` reports **0 errors and 2 warnings**, and both are about the same metadata

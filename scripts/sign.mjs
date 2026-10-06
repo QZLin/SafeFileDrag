@@ -30,11 +30,27 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST_DIR = join(ROOT, 'dist');
 const ARTIFACTS_DIR = join(ROOT, 'web-ext-artifacts');
 
-const forwarded = process.argv.slice(2);
+/**
+ * pnpm forwards the `--` separator to the script, so `pnpm run sign -- --channel=listed`
+ * arrives as `['--', '--channel', 'listed']`. It is noise here: forwarded to web-ext as a
+ * positional argument it would *end* option parsing and turn the flags into unknown
+ * arguments, which silently signs the wrong channel.
+ */
+const forwarded = process.argv.slice(2).filter((arg) => arg !== '--');
 const preflightOnly = forwarded.includes('--check') || forwarded.includes('--dry-run');
 const webExtArgs = forwarded.filter((arg) => arg !== '--check' && arg !== '--dry-run');
 const hasFlag = (name) =>
   webExtArgs.some((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
+
+/** `--channel listed`, `--channel=listed` or `-c listed`; defaults to unlisted. */
+function channelOf(args) {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--channel' || arg === '-c') return args[index + 1] ?? 'unlisted';
+    if (arg.startsWith('--channel=')) return arg.slice('--channel='.length);
+  }
+  return 'unlisted';
+}
 
 /** True when credentials are available to web-ext, from any of its sources. */
 function credentialsAvailable() {
@@ -71,6 +87,7 @@ async function main() {
   if (!webExtBin) problems.push('the local web-ext CLI was not found — run `pnpm install`.');
 
   const credentials = credentialsAvailable();
+  const channel = channelOf(webExtArgs);
   const args = [
     webExtBin,
     'sign',
@@ -81,8 +98,19 @@ async function main() {
   ];
 
   console.log('SafeFileDrag — sign');
+  console.log(`  channel : ${channel}`);
   console.log(`  command : node ${args.join(' ')}`);
   console.log(`  output  : ${ARTIFACTS_DIR} (git-ignored)`);
+
+  if (channel === 'listed') {
+    // Not a blocker: AMO reports it after the upload, which is a slow way to find out.
+    console.log('');
+    console.log('note: a listed version is refused until the add-on has licence metadata on AMO');
+    console.log('      ("This field, or custom_license, is required for listed versions.").');
+    console.log('      web-ext cannot send that. See "First listed submission" in README.md —');
+    console.log('      AMO has no GPL-3.0-or-later in its list, so this project needs a custom');
+    console.log('      licence there. Later versions inherit it and can be signed from here.');
+  }
 
   if (problems.length > 0) {
     console.error('\ncannot sign:');
