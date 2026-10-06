@@ -80,5 +80,5 @@ test('the shipped bundle names its source and licence', { skip }, () => {
   const code = readFileSync(contentUrl, 'utf8');
 
   assert.match(code, /https:\/\/github\.com\/QZLin\/SafeFileDrag/);
-  assert.match(code, /GPL-3\.0-only/);
+  assert.match(code, /GPL-3\.0-or-later/);
 });

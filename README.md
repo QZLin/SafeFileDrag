@@ -4,7 +4,7 @@ A **Firefox-only WebExtension** that stops an accidental local-file drop from
 replacing ("navigating away") the page you are working on — without breaking the
 file uploads that are supposed to work.
 
-* Source: <https://github.com/QZLin/SafeFileDrag> — GPL-3.0-only, see [LICENSE](LICENSE).
+* Source: <https://github.com/QZLin/SafeFileDrag> — GPL-3.0-or-later, see [LICENSE](LICENSE).
 * Manifest V3, Firefox 128+, no build-time UI, no background script.
 * No `permissions`, no `storage`, no `background`/`popup`/`options`, no network
   access, no remote code, no `eval`.
@@ -105,7 +105,7 @@ by the time the event finished?"
 | `scripts/dev.mjs` | Manual-test launcher: serves `dev/` and opens Firefox with the add-on loaded. |
 | `dev/index.html` | The manual playground (zones that need a real Firefox and a real file drag). |
 | `dev/playground.js` | The playground's behaviour, external so no page carries an inline script. |
-| `LICENSE` | GPL-3.0. Copied into `dist/` so the signed package carries it too. |
+| `LICENSE` | GPL-3.0-or-later. Copied into `dist/` so the signed package carries it too. |
 | `dist/` | The loadable (temporary) add-on. Generated; not minified on purpose. |
 
 ## Build
@@ -395,9 +395,19 @@ the browser-specific dispatch behaviour. What is left:
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE). The licence text is also copied
-into `dist/`, so the signed `.xpi` carries it.
+Copyright (C) 2026 QZLin
 
-`package.json` declares `GPL-3.0-only`, which is exactly what the licence file grants. If
-the intent is the FSF's usual "version 3 or any later version", change it to
-`GPL-3.0-or-later` and add that wording to the licence notice.
+This program is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but **without any
+warranty**; without even the implied warranty of merchantability or fitness for a
+particular purpose. See the GNU General Public License for more details.
+
+The full text is in [LICENSE](LICENSE), and is copied into `dist/` so the signed `.xpi`
+carries it too. `package.json` declares the same terms as `GPL-3.0-or-later`.
+
+The add-on id is `safe-file-drag@qzlin.github.io`. It is the add-on's identity on AMO:
+changing it creates a different add-on, so it is pinned by a test rather than left to a
+casual edit.

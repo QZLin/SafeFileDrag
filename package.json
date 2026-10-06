@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Firefox-only WebExtension: prevent accidental local-file drops from navigating the current tab, without breaking normal file uploads.",
-  "license": "GPL-3.0-only",
+  "license": "GPL-3.0-or-later",
   "author": "QZLin <qzlin01@163.com>",
   "repository": {
     "type": "git",

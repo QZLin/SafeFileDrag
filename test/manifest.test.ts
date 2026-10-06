@@ -33,7 +33,7 @@ test('points at the repository the code actually lives in', () => {
 });
 
 test('ships the licence it claims', () => {
-  assert.equal(pkg.license, 'GPL-3.0-only');
+  assert.equal(pkg.license, 'GPL-3.0-or-later');
   const licence = readFileSync(licenseUrl, 'utf8');
   assert.match(licence, /GNU GENERAL PUBLIC LICENSE/);
   assert.match(licence, /Version 3, 29 June 2007/);
@@ -78,10 +78,12 @@ test('runs in the page world, in every frame, before page scripts', () => {
   assert.equal(script.match_about_blank, false);
 });
 
-test('declares the Firefox floor that has MAIN-world content scripts', () => {
+test('declares the add-on id, the Firefox floor and no data collection', () => {
   const gecko = manifest.browser_specific_settings?.gecko;
   assert.equal(typeof gecko, 'object');
-  assert.equal(gecko.id, 'safe-file-drag@local.invalid');
+  // The id is the add-on's identity on AMO: changing it produces a *different* add-on,
+  // so this assertion is a tripwire rather than a formality.
+  assert.equal(gecko.id, 'safe-file-drag@qzlin.github.io');
   assert.equal(gecko.strict_min_version, '128.0');
   assert.deepEqual(gecko.data_collection_permissions, { required: ['none'] });
 });
