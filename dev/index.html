@@ -94,6 +94,16 @@
     <p class="ok">期望：链接 URL 正常插入，扩展完全不介入。</p>
   </div>
 
+  <div class="zone" id="shadow-zone">
+    <h3>9. Web Component（open shadow root 里的 &lt;input type="file"&gt;）</h3>
+    <p>把文件拖到下面的输入框上（不是这块空白处）。</p>
+    <div id="shadow-host"></div>
+    <div class="out" id="shadow-out"></div>
+    <p class="ok">期望：文件名出现在这里。注意日志里 <code>window drop</code> 那行的
+      <code>target</code> 是宿主 <code>div</code>，而 <code>composedPath[0]</code> 才是真正的输入框——
+      扩展必须看后者，否则会误拦合法上传。</p>
+  </div>
+
 </div>
 
 <h2>事件日志 <button id="clear" type="button">清空</button></h2>
@@ -139,7 +149,9 @@
         lastOverTarget = id;
       }
       var types = event.dataTransfer ? Array.prototype.join.call(event.dataTransfer.types, ',') : '(none)';
-      log('window ' + type + ' on #' + id + ' — defaultPrevented=' + event.defaultPrevented + ' types=[' + types + ']');
+      var deepest = event.composedPath ? event.composedPath()[0] : null;
+      var deepestId = (deepest && (deepest.id || deepest.tagName)) || '?';
+      log('window ' + type + ' on #' + id + ' — defaultPrevented=' + event.defaultPrevented + ' types=[' + types + '] composedPath[0]=#' + deepestId);
     });
   });
 
@@ -183,6 +195,17 @@
   dragoveronly.addEventListener('dragover', function (event) {
     event.preventDefault();
     document.getElementById('dragoveronly-out').textContent = 'dragover: preventDefault() (no drop handler)';
+  });
+
+  // --- 9. file input inside an open shadow root (web component shape) -----------
+  var shadowRoot = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+  shadowRoot.innerHTML = '<style>input{font:inherit;width:100%}</style>'
+    + '<input type="file" id="shadow-input" multiple>';
+  var shadowInput = shadowRoot.getElementById('shadow-input');
+  shadowInput.addEventListener('change', function () {
+    var names = Array.prototype.map.call(shadowInput.files, function (f) { return f.name; });
+    document.getElementById('shadow-out').textContent = 'change: ' + (names.join(', ') || '(none)');
+    log('shadow input change: ' + (names.join(', ') || '(none)'));
   });
 
   log('page ready — drag a local file from the file manager onto the zones above');

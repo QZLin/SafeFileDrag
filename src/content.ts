@@ -53,6 +53,13 @@ const INSTALLED = Symbol.for('safe-file-drag/installed/v1');
 /** One adapter object per real target, so path identity checks stay meaningful. */
 const TARGET_ADAPTERS = new WeakMap<EventTarget, EventTargetLike>();
 
+/**
+ * The reverse mapping. The guard reads its native-target candidates both from the event
+ * (`event.target`, a real node) and from the composed path (our adapters), so the
+ * adapter has to be able to translate back before inspecting the DOM.
+ */
+const ADAPTER_NODES = new WeakMap<EventTargetLike, EventTarget>();
+
 function toTarget(node: EventTarget): EventTargetLike {
   const cached = TARGET_ADAPTERS.get(node);
   if (cached) return cached;
@@ -66,6 +73,7 @@ function toTarget(node: EventTarget): EventTargetLike {
     },
   };
   TARGET_ADAPTERS.set(node, adapter);
+  ADAPTER_NODES.set(adapter, node);
   return adapter;
 }
 
@@ -93,11 +101,14 @@ function isFileInput(node: unknown): boolean {
  * conservative choice is to block the navigation there.
  */
 function isNativeFileDropTarget(target: unknown): boolean {
-  if (isFileInput(target)) return true;
+  // The guard offers both a real node (`event.target`) and path nodes (our adapters), so
+  // translate first: an adapter is not an `Element` and would fail every check below.
+  const candidate = ADAPTER_NODES.get(target as EventTargetLike) ?? target;
+  if (isFileInput(candidate)) return true;
 
   // A drop can land inside a file input's (open) shadow tree; retargeting normally
   // reports the host, but walk shadow hosts explicitly to be certain.
-  let node = target as Element | null;
+  let node = candidate as Element | null;
   for (let depth = 0; node && node.nodeType === 1 && depth < 16; depth++) {
     const root = node.getRootNode() as ShadowRoot | Document;
     const host = (root as ShadowRoot).host;

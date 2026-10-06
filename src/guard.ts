@@ -92,7 +92,6 @@ export interface GuardEnv {
   /** Optional diagnostics hook; the shipped content script does not use it. */
   onDecision?(decision: Decision): void;
 }
-
 /** Phases the guard observes. `dragenter`/`dragover` only serve to let `drop` fire. */
 const HANDLED_PHASES = ['dragenter', 'dragover', 'drop'] as const;
 
@@ -111,8 +110,10 @@ const MAX_PATH_NODES = 256;
  *
  * `false` (default) is the smaller intervention: Firefox's native controls accept
  * drops without any JavaScript, so leaving them completely alone preserves their
- * built-in behaviour. Flip to `true` only if manual testing shows a native control
- * rejecting drops because nothing cancelled `dragover`.
+ * built-in behaviour. Confirmed on Firefox 158 Developer Edition with the manual
+ * playground (`pnpm start`, zone 2): a file dropped on `<input type="file">` still
+ * fires `change`. Flip to `true` only if some future Firefox starts rejecting drops
+ * on native controls because nothing cancelled `dragover`.
  */
 const CANCEL_DRAGOVER_ON_NATIVE_TARGET = false;
 
@@ -188,6 +189,8 @@ export function installGuard(env: GuardEnv): void {
 
   let attachments: Attachment[] = [];
   let activeEvent: DragEventLike | null = null;
+  /** Resolved path of `activeEvent`, deepest node first. */
+  let activePath: EventTargetLike[] = [];
   let decided = false;
 
   const detachAll = (): void => {
@@ -240,9 +243,19 @@ export function installGuard(env: GuardEnv): void {
 
     // A native file target (e.g. <input type="file">) receives the file through the
     // event's default action, so cancelling here would break a legitimate upload.
+    //
+    // `event.target` is retargeted to the shadow host for every listener outside a
+    // shadow tree, so a file input inside a web component's shadow root would look like
+    // an ordinary element to us. The composed path still names the node the user
+    // actually dropped on, so the deepest path node is tested as well. (Inside a
+    // *closed* root the path stops at the host, which is why that case is blocked.)
     let nativeTarget = false;
     try {
       nativeTarget = env.isNativeFileDropTarget(event.target);
+      const deepest = activePath[0];
+      if (!nativeTarget && deepest !== undefined && deepest !== event.target) {
+        nativeTarget = env.isNativeFileDropTarget(deepest);
+      }
     } catch {
       nativeTarget = false;
     }
@@ -288,6 +301,7 @@ export function installGuard(env: GuardEnv): void {
 
   const attachObservers = (event: DragEventLike): void => {
     const path = resolvePath(event);
+    activePath = path;
 
     for (const node of path) {
       for (const capture of [true, false]) {
@@ -332,6 +346,7 @@ export function installGuard(env: GuardEnv): void {
     // A previous event's observers are always stale by now.
     detachAll();
     activeEvent = null;
+    activePath = [];
     decided = false;
 
     let fileDrag = false;
