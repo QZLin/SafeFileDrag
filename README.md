@@ -94,6 +94,7 @@ by the time the event finished?"
 | `src/guard.ts` | The whole policy. DOM-free: everything it touches is injected via `GuardEnv`. |
 | `src/content.ts` | The Firefox adapter: captures native DOM references at `document_start` and wires the real `window`/`document` into the guard. |
 | `manifest.json` | MV3 manifest (copied into `dist/` by the build). |
+| `.web-ext-config.mjs` | Points every bare `web-ext` command at `dist/`, so signing the source tree is not the default. |
 | `scripts/build.mjs` | esbuild bundle → `dist/content.js`, then copies the manifest. |
 | `scripts/test.mjs` | Bundles the jsdom suite and runs it on Node's built-in test runner. |
 | `scripts/test-gecko.mjs` | Drives real Firefox (through `web-ext run`) and collects the probe page's report. |
@@ -142,9 +143,18 @@ pnpm run sign -- --check             # pre-flight only: no upload, no network
 pnpm run lint                        # = web-ext lint --source-dir dist
 ```
 
-**Always sign `dist/`, never the repository root.** `web-ext sign` on its own signs the
-current directory. The root contains the *source* manifest, whose `content.js` only exists
-after the build, so signing there uploads a package AMO rejects:
+Any of these work too, because `.web-ext-config.mjs` sets `sourceDir: dist` for every
+`web-ext` command run from this directory:
+
+```sh
+pnpm web-ext lint
+pnpm web-ext build                   # -> web-ext-artifacts/safe_file_drag-1.0.0.zip
+pnpm web-ext sign --channel listed
+```
+
+**Sign `dist/`, never the repository root.** The root contains the *source* manifest,
+whose `content.js` only exists after a build. Signing there uploads a package AMO
+rejects:
 
 ```
 MANIFEST_CONTENT_SCRIPT_FILE_NOT_FOUND   content_scripts[0].js refers to "content.js",
@@ -156,14 +166,18 @@ INLINE_SCRIPT × 3                        dev/index.html, test/gecko/index.html
 
 Every one of those goes away with `--source-dir dist`: the inline-script warnings were
 about development pages that are not part of the add-on at all, and the missing file was
-the build output. `pnpm run sign` always passes `--source-dir dist`, checks the package
-against the manifest, and refuses to upload without credentials — so that particular
-failure cannot be repeated by hand. The signed `.xpi` lands in `web-ext-artifacts/`
-(git-ignored).
+the build output. Two things now make that failure hard to repeat:
 
-Credentials are never committed; `scripts/sign.mjs` accepts them from the environment
-(`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`), from a `.env` file next to `package.json`, or
-from `--api-key=` / `--api-secret=`. Create them at
+* `.web-ext-config.mjs` points every bare `web-ext` command at `dist/`, so `pnpm web-ext
+  sign --channel listed` and `pnpm run sign` package the same thing. CLI flags still win,
+  so `--source-dir .` remains possible on purpose;
+* `pnpm run sign` (scripts/sign.mjs) additionally verifies the package against its
+  manifest, defaults to `--channel=unlisted`, and refuses to upload without credentials.
+
+The signed `.xpi` (or the `.zip` from `build`) lands in `web-ext-artifacts/`, which is
+git-ignored. Credentials are never committed; `scripts/sign.mjs` accepts them from the
+environment (`WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`), from a `.env` file next to
+`package.json`, or from `--api-key=` / `--api-secret=`. Create them at
 <https://addons.mozilla.org/developers/addon/api/key/>.
 
 ### The two warnings that remain
