@@ -23,4 +23,7 @@ export default {
     // is exactly what you want to do after a fix.
     overwriteDest: true,
   },
+  run: {
+    firefox: "firefoxdeveloperedition",
+  }
 };

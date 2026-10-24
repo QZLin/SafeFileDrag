@@ -1,6 +1,6 @@
 {
   "name": "safe-file-drag",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Firefox-only WebExtension: prevent accidental local-file drops from navigating the current tab, without breaking normal file uploads.",
@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "clean": "node scripts/clean.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "test": "node scripts/test.mjs",

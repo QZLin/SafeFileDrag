@@ -4,6 +4,7 @@
  * Produces a loadable (temporary) add-on in `dist/`:
  *   dist/manifest.json   copied verbatim from the repository root
  *   dist/content.js      the bundled content script (IIFE, no modules at runtime)
+ *   dist/icon/*.png      the add-on icons the manifest names
  *   dist/LICENSE         the licence text, shipped with the add-on
  *
  * The bundle is intentionally not minified: this extension is small, security
@@ -48,6 +49,14 @@ await build({
 
 const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
 await writeFile(join(dist, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+// Ship exactly the icons the manifest names. The SVG source and the resize script stay
+// out of the package; `icon/` is a build input, the copied PNGs are the artifact.
+for (const iconPath of new Set(Object.values(manifest.icons ?? {}))) {
+  const destination = join(dist, iconPath);
+  await mkdir(dirname(destination), { recursive: true });
+  await copyFile(join(root, iconPath), destination);
+}
 
 // The licence travels with the package: this is the text a user of the signed .xpi gets.
 await copyFile(join(root, 'LICENSE'), join(dist, 'LICENSE'));

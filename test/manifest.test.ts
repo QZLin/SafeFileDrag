@@ -9,7 +9,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const manifestUrl = new URL('../manifest.json', import.meta.url);
 const packageUrl = new URL('../package.json', import.meta.url);
@@ -37,6 +37,23 @@ test('ships the licence it claims', () => {
   const licence = readFileSync(licenseUrl, 'utf8');
   assert.match(licence, /GNU GENERAL PUBLIC LICENSE/);
   assert.match(licence, /Version 3, 29 June 2007/);
+});
+
+test('names icons that actually exist', () => {
+  // A broken icon path is a warning-free runtime failure (a blank toolbar tile) and a
+  // hard AMO rejection in the worst case; the build checks the package, this checks the
+  // source before a build is even attempted.
+  const icons = manifest.icons;
+  assert.equal(typeof icons, 'object');
+  assert.ok(Object.keys(icons).length > 0, 'at least one icon');
+  for (const [size, path] of Object.entries(icons as Record<string, string>)) {
+    assert.match(size, /^\d+$/, `icon size must be numeric: "${size}"`);
+    assert.match(path, /^icon\/logo_\d+\.png$/, `unexpected icon path: "${path}"`);
+    assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, `missing icon: ${path}`);
+  }
+  // 48 is the toolbar/listing icon and 128 the store tile: Firefox and AMO both want them.
+  assert.ok('48' in icons, 'icons["48"]');
+  assert.ok('128' in icons, 'icons["128"]');
 });
 
 test('requests no privileged surface at all', () => {

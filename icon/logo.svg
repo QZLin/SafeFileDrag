@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 500 500"
+   width="100%"
+   height="100%"
+   version="1.1"
+   id="svg11"
+   sodipodi:docname="logo.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview11"
+     pagecolor="#00ff00"
+     bordercolor="#000000"
+     borderopacity="0"
+     inkscape:showpageshadow="false"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="true"
+     inkscape:deskcolor="#cdd1d1"
+     inkscape:zoom="0.57063517"
+     inkscape:cx="-103.39356"
+     inkscape:cy="160.34764"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg11"
+     showgrid="false"
+     showborder="false"
+     borderlayer="false"
+     inkscape:antialias-rendering="false"
+     inkscape:clip-to-page="false" />
+  <defs
+     id="defs1">
+    <!-- 定义圆角样式 -->
+    <style
+       id="style1">
+      .shield-main { fill: #165a9c; stroke: #0f2d4a; stroke-width: 8; stroke-linejoin: round; }
+      .shield-inner { fill: #1d6eb8; }
+      .doc-white { fill: #ffffff; stroke: #0f2d4a; stroke-width: 6; stroke-linejoin: round; }
+      .doc-line { stroke: #1d6eb8; stroke-width: 8; stroke-linecap: round; }
+      .ban-circle { fill: none; stroke: #e84033; stroke-width: 16; }
+      .ban-slash { stroke: #e84033; stroke-width: 16; stroke-linecap: round; }
+      .dashed-arrow { fill: none; stroke: #218ff0; stroke-width: 8; stroke-dasharray: 12, 12; stroke-linecap: round; }
+      .arrow-head { fill: #218ff0; }
+      .check-mark { fill: none; stroke: #1fbb4e; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <!-- 背景盾牌 -->
+  <g
+     id="shield">
+    <!-- 盾牌外轮廓 -->
+    <path
+       class="shield-main"
+       d="M 250 80 L 400 130 L 380 320 C 360 400 250 450 250 450 C 250 450 140 400 120 320 L 100 130 Z"
+       id="path1" />
+    <!-- 盾牌内层高光（增加一点立体感） -->
+    <path
+       class="shield-inner"
+       d="M 250 100 L 380 145 L 360 315 C 340 380 250 425 250 425 C 250 425 160 380 140 315 L 120 145 Z"
+       id="path2" />
+    <!-- 中间折线 -->
+    <path
+       d="M 250 100 L 250 425"
+       fill="none"
+       stroke="#0f2d4a"
+       stroke-width="8"
+       opacity="0.3"
+       id="path3" />
+  </g>
+  <!-- 盾牌内的文件 (已调整位置，使其更居中) -->
+  <g
+     id="internal-document">
+    <!-- 文件主体与折角 -->
+    <path
+       class="doc-white"
+       d="M 170 200 L 250 200 L 270 220 L 270 330 L 170 330 Z"
+       id="path4" />
+    <path
+       d="M 250 200 L 250 220 L 270 220"
+       class="doc-white"
+       id="path5" />
+    <!-- 文件内容线 -->
+    <line
+       x1="190"
+       y1="245"
+       x2="250"
+       y2="245"
+       class="doc-line"
+       id="line5" />
+    <line
+       x1="190"
+       y1="270"
+       x2="250"
+       y2="270"
+       class="doc-line"
+       id="line6" />
+    <line
+       x1="190"
+       y1="295"
+       x2="250"
+       y2="295"
+       class="doc-line"
+       id="line7" />
+  </g>
+  <!-- 禁止符号（红色） -->
+  <g
+     id="no-symbol"
+     transform="translate(4.3370508,-16.728625)">
+    <circle
+       cx="320"
+       cy="200"
+       r="50"
+       class="ban-circle"
+       id="circle7" />
+    <line
+       x1="285"
+       y1="165"
+       x2="355"
+       y2="235"
+       class="ban-slash"
+       id="line8" />
+  </g>
+  <!-- 虚线箭头 (调整了起点，连接到右下角外部文件) -->
+  <g
+     id="dashed-arrow"
+     style="stroke:#89fafe;stroke-opacity:1;fill:none;fill-opacity:1">
+    <path
+       d="M 255 310 Q 310 330 340 380"
+       class="dashed-arrow"
+       id="path8"
+       style="stroke:#89fafe;stroke-opacity:1;fill:none;fill-opacity:1" />
+    <!-- 箭头 -->
+    <polygon
+       points="350,390 325,385 335,365 "
+       class="arrow-head"
+       id="polygon8"
+       transform="matrix(1.6302242,0.43295014,-0.31815181,1.1768471,-80.715782,-207.5502)"
+       style="stroke:#00b400;stroke-opacity:1;fill:#89fafe;fill-opacity:1;stroke-width:3.48682454;stroke-dasharray:none" />
+  </g>
+  <!-- 右侧外部文件（带有打勾） -->
+  <g
+     id="external-document">
+    <!-- 文件主体 -->
+    <path
+       class="doc-white"
+       d="M 370 360 L 420 360 L 440 380 L 440 440 L 370 440 Z"
+       id="path9" />
+    <!-- 折角 -->
+    <path
+       d="M 420 360 L 420 380 L 440 380"
+       class="doc-white"
+       id="path10" />
+    <!-- 绿色对勾 -->
+    <path
+       class="check-mark"
+       d="M 385 400 L 395 410 L 420 385"
+       id="path11" />
+    <!-- 底部小横线 -->
+    <line
+       x1="405"
+       y1="425"
+       x2="425"
+       y2="425"
+       stroke="#0f2d4a"
+       stroke-width="8"
+       stroke-linecap="round"
+       id="line11" />
+  </g>
+</svg>
